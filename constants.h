@@ -12,6 +12,7 @@
 // Maximum number of .conf files allowed in the input directory.
 #define MAX_CONF_FILES 256
 
-// Root directory under which every VM workspace is created:
+// Root directory under which every VM workspace is created: 
 // CLOUDIST_TMP_DIR/<reservation_id>/<vm_id>
 #define CLOUDIST_TMP_DIR "/tmp/CloudIST"
+//Dgggg
