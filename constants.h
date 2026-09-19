@@ -8,3 +8,6 @@
 #define MAX_RESERVATIONS       256
 #define MAX_RESERVATIONS_ITEMS 32
 #define MAX_RESERVATION_VMS    128
+
+// Maximum number of .conf files allowed in the input directory.
+#define MAX_CONF_FILES 256
