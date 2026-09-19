@@ -112,6 +112,37 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
   return 0;
 }
 
+/**
+ * Copies the input folder of every VM in the reservation into its own
+ * workspace directory (CLOUDIST_TMP_DIR/<reservation_id>/<vm_id>), so the
+ * files are ready before the VM's application is executed.
+ *
+ * @param res Reservation whose VMs' workspaces are being prepared.
+ *
+ * @return 0 on success.
+ * @return 1 on error.
+ */
+static int prepare_vm_workspaces(Reservation *res) {
+  for (size_t i = 0; i < res->num_vms; i++) {
+    VM *vm = res->vms[i];
+
+    char vm_dir[MAX_PATH_SIZE];
+    int len = snprintf(vm_dir, sizeof(vm_dir), "%s/%s/%s", CLOUDIST_TMP_DIR, res->id, vm->id);
+
+    if (len < 0 || (size_t)len >= sizeof(vm_dir)) {
+      fprintf(stderr, "VM workspace path is too long for VM \"%s\".\n", vm->id);
+      return 1;
+    }
+
+    if (copy_directory_recursive(vm->type->input_folder, vm_dir) != 0) {
+      fprintf(stderr, "Failed to prepare workspace for VM \"%s\".\n", vm->id);
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
 int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   if(!dc->configured){
     fprintf(stderr, "Data Center needs to be configured!\n");
@@ -120,6 +151,10 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
 
   Reservation *res = find_pending_reservation(dc, reservation_id);
   if (!res) return 1;
+
+  // Exercise 1: copy each VM's input folder into its workspace before
+  // launching the application.
+  if (prepare_vm_workspaces(res) != 0) return 1;
 
   if (spawn_all_vms(res) != 0) return 1;
 
