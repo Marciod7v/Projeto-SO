@@ -230,7 +230,7 @@ int list_conf_files(const char *dir_path, ConfFileList *list){
 
   closedir(dir);
 
-  // Sort alphabetically, as required by the assignment.
+  // organiza alfabeticamente com
   qsort(list->paths, list->count, MAX_PATH_SIZE, compare_paths);
 
   return 0;

@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
-
+#include <errno.h>
 VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	for(size_t i = 0; i < dc->num_vm_types; i++){
 		if(strncmp(type_id, dc->vm_types[i].id, MAX_STRING_SIZE) == 0){
@@ -237,33 +237,77 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 
 	dc->num_reservations--;
 }
-
-void spawn_vm_child(VM *vm) {
-	(void)vm; // To avoid warning.
-
+/*cria mais um parametro pois precisava acessar ao numerode servidores 
+par calcular a percentagem de cpu.
+*/
+void spawn_vm_child(VM *vm, size_t num_servers) {
+	
 	// TODO: Limit RAM, DISK and use exec with cpulimit.
+    double cpu_percentagem = vm->type->required.cpu/(vm->server->total.cpu*(double)num_servers)*100;
+	char cpu_str[32];
 
-	fprintf(stderr, "VM execution not implemented in base version.\n");
+
+	size_t ram_limit = vm->type->required.ram << 30;
+    struct rlimit lim;
+	lim.rlim_cur = ram_limit;
+	lim.rlim_max = ram_limit;
+	setrlimit(RLIMIT_AS,&lim);
+	
+	size_t disk_limit = vm->type->required.disk << 30;
+	lim.rlim_cur = disk_limit;
+	lim.rlim_max = disk_limit;
+	setrlimit(RLIMIT_FSIZE,&lim);
+
+	snprintf(cpu_str,sizeof(cpu_str),"%.2f",cpu_percentagem);
+	execlp("cpulimit","cpulimit","-q","-f","-l",cpu_str,"--",vm->type->exec_path,NULL);
+	perror("exec spawn child");
+	_exit(1);
+    
+
 }
 
-int spawn_all_vms(Reservation *res) {
+int spawn_all_vms(Reservation *res, size_t num_servers) {
 	for (size_t i = 0; i < res->num_vms; i++) {
 		VM *vm = res->vms[i];
-
-		// TODO: Implement fork code. Set VM PID and update VM state to running.
-
-		spawn_vm_child(vm);
-
+        pid_t Childpid = fork();
+		
+        if (Childpid == -1){
+			perror("fork erro");
+			return 1;
+		}
+		else if(Childpid == 0){
+        	spawn_vm_child(vm, num_servers);
+			//garantir que em caso de erro saia
+			_exit(1);
+			//o pai garante que o pid valido continua vivo
+		}else{
+			vm->pid = Childpid;
+			vm->state = VM_STATE_RUNNING;
+		}
 	}
 
 	return 0;
 }
-
+/**
+ * basicament aqui caso o wait pid 
+ * falhar lança erro e continua 
+ * para proximo filho
+ * caso sim ele sai e termina o processo
+ */
 void wait_for_all_vms(Reservation *res) {
 	for (size_t i = 0; i < res->num_vms; i++) {
-		// TODO: IMPLEMENT WAITING FOR VM
-
-		res->vms[i]->state = VM_STATE_TERMINATED;
+		int status = 0;
+        if(waitpid(res->vms[i]->pid,&status,0)== -1){
+			perror("waitpid");
+			continue;
+		}
+		if(WIFEXITED(status)){
+			int exitcode = WEXITSTATUS(status);
+			if(exitcode != 0){
+				fprintf(stderr,"terminou com erro %d o %s\n",exitcode,res->vms[i]->id);
+			}
+		}
+           res->vms[i]->state = VM_STATE_TERMINATED;
 	}
 }
 

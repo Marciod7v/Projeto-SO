@@ -19,3 +19,6 @@ The program simulates a data center that manages servers, VM types, reservations
   resolution.
 - `constants.h`: Limits used by the data center, reservations, VM types, and
   identifiers.
+
+aqui so para tanga mesmo 
+Imagina que o teu programa é um hotel (o "datacenter"). O hotel tem quartos (servidores), e as pessoas podem reservar "mini-apartamentos" dentro desses quartos (VMs) para lá correrem um programinha delas.

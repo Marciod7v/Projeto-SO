@@ -156,7 +156,7 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   // launching the application.
   if (prepare_vm_workspaces(res) != 0) return 1;
 
-  if (spawn_all_vms(res) != 0) return 1;
+  if (spawn_all_vms(res,dc->num_servers) != 0) return 1;
 
   res->state = RES_STATE_RUNNING;
 
