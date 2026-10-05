@@ -2,6 +2,7 @@
 #include "datacenter_utils.h"
 
 #include <stdio.h>
+#include <pthread.h>
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,10 @@ void datacenter_init(DataCenter *dc) {
   dc->num_reservations = 0;
 
   dc->configured = 0;
+
+  dc->running_vms = 0;
+  pthread_mutex_init(&dc->lock, NULL);
+  pthread_cond_init(&dc->idle, NULL);
 }
 
 void datacenter_destroy(DataCenter *dc) {
@@ -24,6 +29,9 @@ void datacenter_destroy(DataCenter *dc) {
     }
   }
   free(dc->servers);
+
+  pthread_cond_destroy(&dc->idle);
+  pthread_mutex_destroy(&dc->lock);
 }
 
 int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resources){
@@ -88,12 +96,10 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
   return 0;
 }
 
-int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
-  if (!dc->configured) {
-    fprintf(stderr, "Data Center needs to be configured!\n");
-    return 1;
-  }
-
+/**
+ * Validates and commits a reservation. The caller must hold dc->lock.
+ */
+static int reserve_locked(DataCenter *dc, Reservation *reservation) {
   if(reservation_validate(dc, reservation) != 0){
     return 1;
   }
@@ -110,6 +116,19 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
   dc->num_reservations++;
 
   return 0;
+}
+
+int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
+  if (!dc->configured) {
+    fprintf(stderr, "Data Center needs to be configured!\n");
+    return 1;
+  }
+
+  pthread_mutex_lock(&dc->lock);
+  int result = reserve_locked(dc, reservation);
+  pthread_mutex_unlock(&dc->lock);
+
+  return result;
 }
 
 /**
@@ -149,24 +168,41 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
     return 1;
   }
 
+  pthread_mutex_lock(&dc->lock);
+
   Reservation *res = find_pending_reservation(dc, reservation_id);
-  if (!res) return 1;
+  if (!res) {
+    pthread_mutex_unlock(&dc->lock);
+    return 1;
+  }
 
   // Exercise 1: copy each VM's input folder into its workspace before
   // launching the application.
-  if (prepare_vm_workspaces(res) != 0) return 1;
-
-  if (spawn_all_vms(res,dc->num_servers) != 0) return 1;
+  if (prepare_vm_workspaces(res) != 0) {
+    pthread_mutex_unlock(&dc->lock);
+    return 1;
+  }
 
   res->state = RES_STATE_RUNNING;
 
-  wait_for_all_vms(res);
+  // Exercise 2: launch the VMs and return right away. Each VM is destroyed
+  // by its own thread as soon as its process ends (see vm_destroy), and the
+  // reservation disappears when its last VM ends. `res` must not be used
+  // after this call: it may already have been removed.
+  int result = spawn_all_vms(dc, res);
 
-  res->state = RES_STATE_FINISHED;
+  pthread_mutex_unlock(&dc->lock);
 
-  reservation_destroy(dc, res);
+  return result;
+}
 
-  return 0;
+void datacenter_wait_all_vms(DataCenter *dc) {
+  pthread_mutex_lock(&dc->lock);
+
+  while (dc->running_vms > 0)
+    pthread_cond_wait(&dc->idle, &dc->lock);
+
+  pthread_mutex_unlock(&dc->lock);
 }
 
 int datacenter_list(DataCenter *dc) {
@@ -174,6 +210,8 @@ int datacenter_list(DataCenter *dc) {
     fprintf(stderr, "Data Center needs to be configured!\n");
     return 1;
   }
+
+  pthread_mutex_lock(&dc->lock);
 
   printf("=================================== DATA CENTER STATUS ===================================\n");
   printf("\n[ PHYSICAL SERVERS ] (%zu total)\n", dc->num_servers);
@@ -264,6 +302,8 @@ int datacenter_list(DataCenter *dc) {
   }
 
   printf("================================================================--------------------------\n\n");
+
+  pthread_mutex_unlock(&dc->lock);
   return 0;
 }
 

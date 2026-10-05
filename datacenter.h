@@ -2,6 +2,7 @@
 #define DATACENTER__H
 
 #include <stdio.h>
+#include <pthread.h>
 #include <sys/types.h>
 
 #include "resources.h"
@@ -18,15 +19,17 @@ typedef struct VMType{
 typedef enum {
   VM_STATE_RESERVED,   // placed on a Server, process not started yet (waiting for 'A' command)
   VM_STATE_RUNNING,    // process launched (fork()/exec() called), `pid` is valid
-  VM_STATE_TERMINATED  // wait() called, process finished
+  VM_STATE_TERMINATED  // process finished (the VM is destroyed right after)
 } VMState;
 
 typedef struct Server Server;
+typedef struct DataCenter DataCenter;
 
 typedef struct VM {
   char id[MAX_VM_ID_STRING]; // VM id. eg: "R1_V1_1"
   VMType *type;   // VM type.
   Server *server; // Server where the VM is placed.
+  DataCenter *dc; // Data Center the VM belongs to (used by the thread that waits for the VM).
   pid_t pid;      // PID of executable file.
   VMState state;  // State of the VM.
 } VM;
@@ -76,6 +79,12 @@ typedef struct DataCenter {
     size_t num_reservations;
 
 	int configured;		      // Wheter the datacenter is configured or not.
+
+	// Synchronization: VMs are destroyed by their own threads as soon as their
+	// process ends, so every access to servers/reservations/VMs is protected.
+	pthread_mutex_t lock;        // Protects servers, reservations and VMs.
+	pthread_cond_t idle;         // Signaled when running_vms drops to 0.
+	size_t running_vms;          // VMs whose process was launched and has not ended yet.
 } DataCenter;
 
 /**
@@ -136,7 +145,9 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation);
 int datacenter_list(DataCenter *dc);
 
 /**
- * Executes a reservation, launching the VMs.
+ * Executes a reservation, launching the VMs. Returns as soon as the processes
+ * are launched; each VM is destroyed (and its resources returned) when its
+ * process ends, and the reservation is removed when its last VM ends.
  *
  * @param dc Pointer to a Data Center.
  * @param reservation_id ID of the reservation to execute.
@@ -145,6 +156,13 @@ int datacenter_list(DataCenter *dc);
  * @return 1 on error.
  */
 int datacenter_execute(DataCenter *dc, const char *reservation_id);
+
+/**
+ * Blocks until every launched VM has ended and been destroyed.
+ *
+ * @param dc Pointer to a Data Center.
+ */
+void datacenter_wait_all_vms(DataCenter *dc);
 
 /**
  * Executes a delay command.

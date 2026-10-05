@@ -1,6 +1,5 @@
 CC = gcc
-
-CFLAGS = -g -std=c17 -D_POSIX_C_SOURCE=200809L \
+CFLAGS = -g -std=c17 -pthread -D_POSIX_C_SOURCE=200809L \
 		 -Wall -Werror -Wextra \
 		 -Wcast-align -Wconversion -Wfloat-equal -Wformat=2 -Wnull-dereference -Wshadow -Wsign-conversion -Wswitch-enum -Wundef -Wunreachable-code -Wunused \
  		 -fsanitize=undefined
