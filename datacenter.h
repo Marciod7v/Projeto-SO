@@ -90,7 +90,7 @@ typedef struct DataCenter {
 	// Vários locks de servidores são sempre pedidos por ordem crescente de servidor.
 	pthread_mutex_t registry_lock; // Protege vm_types, reservas e num_reservations.
 	pthread_mutex_t running_lock;  // Protege running_vms.
-	pthread_cond_t idle;           / Sinalizado quando running_vms vai para 0.
+	pthread_cond_t idle;           // Sinalizado quando running_vms vai para 0.
 	size_t running_vms;            // VMs cujo processo foi iniciado e ainda não terminou.
 } DataCenter;
 
