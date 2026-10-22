@@ -2,11 +2,20 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
-
+#include <pthread.h>
 #include "parser.h"
 #include "datacenter.h"
 #include "constants.h"
 #include "filesystem.h"
+
+typedef struct
+{
+    pthread_mutex_t caneta;
+	size_t index;
+	ConfFileList *conf_files;
+	DataCenter *dc;
+}Argspassados;
+
 
 /**
  * Reads and processes every command available from fd, in order, until EOC
@@ -117,6 +126,29 @@ static void process_commands(DataCenter *dc, int fd){
 		}
 	}
 }
+static void *ordemdetrabalho(void *arg){
+	Argspassados *mochila = arg;
+	while(1){
+		size_t i;
+		pthread_mutex_lock(&mochila->caneta);
+		if(mochila->index >= mochila->conf_files->count){
+			pthread_mutex_unlock(&mochila->caneta);
+			break;
+		}
+		i = mochila->index++;
+		pthread_mutex_unlock(&mochila->caneta);
+
+		const char *path = mochila->conf_files->paths[i];
+		int fd = open(path, O_RDONLY);
+		if (fd < 0){
+			fprintf(stderr,"failed to open%s\n",path);
+			continue;
+		}
+		process_commands(mochila->dc,fd);
+		close(fd);
+	}
+	return NULL;
+}
 
 int main(int argc, char **argv){
 	DataCenter dc;
@@ -172,10 +204,47 @@ int main(int argc, char **argv){
 		datacenter_destroy(&dc);
 		return 1;
 	}
+	//inicialização dos argumentos esatdpo partilhado
+	Argspassados mochila = {
+		.index = 0,
+		.conf_files = &conf_files,
+		.dc = &dc,
+	};
+	pthread_mutex_init(&mochila.caneta, NULL);
 
-	// Process every .conf file, in alphabetical order (guaranteed by
+	size_t num_threads = max_threads;
+	//evitar criar mais threads desnecessário
+	if(num_threads > conf_files.count){
+		num_threads = conf_files.count;
+	}
+    pthread_t *threads = malloc(num_threads*sizeof(pthread_t));
+	if(!threads){
+		fprintf(stderr,"Failed to allocate threads arrays.\n");
+		pthread_mutex_destroy(&mochila.caneta);
+		datacenter_destroy(&dc);
+		return 1;
+	}
+
+	size_t created = 0;
+	//aqi se realiza o trabalho dinamico cada thread realiza seu trabalho 
+	for(size_t t = 0; t < num_threads; t++){
+      if(pthread_create(&threads[t], NULL, ordemdetrabalho,&mochila) != 0){
+		fprintf(stderr,"Failed to create thread %zu\n",t);
+		break;
+	  }
+	  created++;
+	}
+	//join seguro depois que todas as threads ja acabaram
+	for(size_t t = 0; t< created; t ++){
+		pthread_join(threads[t], NULL);
+	}
+
+	free(threads);
+	pthread_mutex_destroy(&mochila.caneta);
+	/*// Process every .conf file, in alphabetical order (guaranteed by
 	// list_conf_files), sequentially.
 	for (size_t i = 0; i < conf_files.count; i++) {
+		
 		int fd = open(conf_files.paths[i], O_RDONLY);
 
 		if (fd < 0) {
@@ -186,7 +255,7 @@ int main(int argc, char **argv){
 		process_commands(&dc, fd);
 
 		close(fd);
-	}
+	}*/
 
 	// VMs run in the background: wait for all of them to end before cleaning up.
 	datacenter_wait_all_vms(&dc);
