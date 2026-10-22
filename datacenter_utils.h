@@ -79,23 +79,30 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
 void spawn_vm_child(VM *vm,size_t num_servers);
 
 /**
- * Forks one child per VM in the reservation, calling spawn_vm_child()
- * in each child and recording the pid/state in the parent.
+ * Destroys a single VM: returns its resources to the hosting server, removes
+ * it from the server and from its reservation, and frees it. When it was the
+ * last VM of the reservation, the reservation is removed from the Data Center.
+ * The caller must hold dc->lock.
  *
+ * @param dc Pointer to the Data Center the VM belongs to.
+ * @param vm Pointer to the VM being destroyed (invalid after the call).
+ */
+void vm_destroy(DataCenter *dc, VM *vm);
+
+/**
+ * Forks one child per VM in the reservation, calling spawn_vm_child() in each
+ * child, and starts one thread per VM that waits for its process to end and
+ * then destroys the VM. Returns right after launching the processes.
+ * The caller must hold dc->lock, and must not use `res` afterwards (the
+ * reservation may already have been removed).
+ *
+ * @param dc Pointer to the Data Center.
  * @param res Pointer to the Reservation whose VMs should be spawned.
  *
  * @return 0 on success.
- * @return 1 if any fork() call fails.
+ * @return 1 if any VM could not be started.
  */
-int spawn_all_vms(Reservation *res,size_t num_servers);
-
-/**
- * Blocks until every VM's process has exited, updating each VM's state
- * to VM_STATE_TERMINATED as its pid is reaped.
- *
- * @param res Pointer to the Reservation whose VMs should be waited on.
- */
-void wait_for_all_vms(Reservation *res);
+int spawn_all_vms(DataCenter *dc, Reservation *res);
 
 /**
  * Converts a VM state to a human-readable string. Used by datacenter_list().

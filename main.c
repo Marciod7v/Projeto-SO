@@ -69,7 +69,7 @@ static void process_commands(DataCenter *dc, int fd){
 					continue;
 				}
 
-				printf("Finished reservation execution!\n");
+				printf("Reservation execution started!\n");
 
 				break;
 
@@ -186,6 +186,9 @@ int main(int argc, char **argv){
 
 		close(fd);
 	}
+
+	// VMs run in the background: wait for all of them to end before cleaning up.
+	datacenter_wait_all_vms(&dc);
 
 	datacenter_destroy(&dc);
 	return 0;

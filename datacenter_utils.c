@@ -7,6 +7,8 @@
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <errno.h>
+#include <pthread.h>
+
 VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	for(size_t i = 0; i < dc->num_vm_types; i++){
 		if(strncmp(type_id, dc->vm_types[i].id, MAX_STRING_SIZE) == 0){
@@ -154,6 +156,7 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 
 			new_vm->type = item->vm_type;
 			new_vm->server = server;
+			new_vm->dc = dc;
 			new_vm->state = VM_STATE_RESERVED;
 
 			resources_sub(&server->available, item->vm_type->required);
@@ -237,6 +240,53 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 
 	dc->num_reservations--;
 }
+void vm_destroy(DataCenter *dc, VM *vm) {
+	Server *server = vm->server;
+
+	// Return the VM resources back to the hosting server.
+	resources_add(&server->available, vm->type->required);
+
+	// Remove the VM from the server's hosted VM list.
+	for (size_t j = 0; j < server->num_hosted_vms; j++) {
+		if (server->hosted_vms[j] == vm) {
+			memmove(&server->hosted_vms[j],
+							&server->hosted_vms[j + 1],
+							(server->num_hosted_vms - j - 1) * sizeof(VM *));
+
+			server->num_hosted_vms--;
+			break;
+		}
+	}
+
+	// Remove the VM from its reservation. When it was the last one, the
+	// reservation itself is removed from the Data Center.
+	for (size_t i = 0; i < dc->num_reservations; i++) {
+		Reservation *res = &dc->reservations[i];
+
+		for (size_t k = 0; k < res->num_vms; k++) {
+			if (res->vms[k] != vm)
+				continue;
+
+			memmove(&res->vms[k],
+							&res->vms[k + 1],
+							(res->num_vms - k - 1) * sizeof(VM *));
+
+			res->num_vms--;
+			res->vms[res->num_vms] = NULL;
+
+			if (res->num_vms == 0) {
+				res->state = RES_STATE_FINISHED;
+				reservation_destroy(dc, res);
+			}
+
+			free(vm);
+			return;
+		}
+	}
+
+	free(vm); // Not part of any reservation (should never happen).
+}
+
 /*cria mais um parametro pois precisava acessar ao numerode servidores 
 par calcular a percentagem de cpu.
 */
@@ -266,49 +316,110 @@ void spawn_vm_child(VM *vm, size_t num_servers) {
 
 }
 
-int spawn_all_vms(Reservation *res, size_t num_servers) {
-	for (size_t i = 0; i < res->num_vms; i++) {
-		VM *vm = res->vms[i];
-        pid_t Childpid = fork();
-		
-        if (Childpid == -1){
-			perror("fork erro");
-			return 1;
-		}
-		else if(Childpid == 0){
-        	spawn_vm_child(vm, num_servers);
-			//garantir que em caso de erro saia
-			_exit(1);
-			//o pai garante que o pid valido continua vivo
-		}else{
-			vm->pid = Childpid;
-			vm->state = VM_STATE_RUNNING;
-		}
+/**
+ * Waits for the process of a VM to end and reports an abnormal ending.
+ * Does not touch the Data Center state, so it does not need the lock.
+ *
+ * @param vm Pointer to the VM whose process is being waited on.
+ */
+static void reap_vm(VM *vm) {
+	int status = 0;
+	pid_t result;
+
+	do {
+		result = waitpid(vm->pid, &status, 0);
+	} while (result == -1 && errno == EINTR);
+
+	if (result == -1) {
+		perror("waitpid");
+		return;
 	}
 
-	return 0;
+	if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+		fprintf(stderr, "terminou com erro %d o %s\n", WEXITSTATUS(status), vm->id);
+	} else if (WIFSIGNALED(status)) {
+		fprintf(stderr, "terminou pelo sinal %d o %s\n", WTERMSIG(status), vm->id);
+	}
 }
+
 /**
- * basicament aqui caso o wait pid 
- * falhar lança erro e continua 
- * para proximo filho
- * caso sim ele sai e termina o processo
+ * Called when the process of a VM has ended: destroys the VM (returning its
+ * resources) and wakes up datacenter_wait_all_vms() when it was the last one.
+ * The caller must hold dc->lock.
  */
-void wait_for_all_vms(Reservation *res) {
-	for (size_t i = 0; i < res->num_vms; i++) {
-		int status = 0;
-        if(waitpid(res->vms[i]->pid,&status,0)== -1){
-			perror("waitpid");
+static void vm_finished(DataCenter *dc, VM *vm) {
+	vm_destroy(dc, vm);
+
+	dc->running_vms--;
+
+	if (dc->running_vms == 0)
+		pthread_cond_broadcast(&dc->idle);
+}
+
+/**
+ * Body of the thread that watches one VM: waits for its process to end and
+ * then destroys the VM, as soon as that happens.
+ *
+ * @param arg Pointer to the VM being watched.
+ */
+static void *vm_watcher(void *arg) {
+	VM *vm = arg;
+	DataCenter *dc = vm->dc;
+
+	reap_vm(vm);
+
+	pthread_mutex_lock(&dc->lock);
+	vm_finished(dc, vm);
+	pthread_mutex_unlock(&dc->lock);
+
+	return NULL;
+}
+
+int spawn_all_vms(DataCenter *dc, Reservation *res) {
+	// Work on a copy of the VM pointers: vm_destroy() removes VMs from
+	// res->vms (and may remove the reservation) while we are looping.
+	VM *vms[MAX_RESERVATION_VMS];
+	size_t count = res->num_vms;
+	int failed = 0;
+
+	memcpy(vms, res->vms, count * sizeof(VM *));
+
+	for (size_t i = 0; i < count; i++) {
+		VM *vm = vms[i];
+		pid_t pid = fork();
+
+		if (pid == -1) {
+			perror("fork erro");
+			vm_destroy(dc, vm); // This VM will never run: release its resources.
+			failed = 1;
 			continue;
 		}
-		if(WIFEXITED(status)){
-			int exitcode = WEXITSTATUS(status);
-			if(exitcode != 0){
-				fprintf(stderr,"terminou com erro %d o %s\n",exitcode,res->vms[i]->id);
-			}
+
+		if (pid == 0) {
+			spawn_vm_child(vm, dc->num_servers);
+			_exit(1); // Only reached if spawn_vm_child fails.
 		}
-           res->vms[i]->state = VM_STATE_TERMINATED;
+
+		vm->pid = pid;
+		vm->state = VM_STATE_RUNNING;
+		dc->running_vms++;
+
+		// One thread per VM, just to wait for its process and destroy it.
+		pthread_t watcher;
+
+		if (pthread_create(&watcher, NULL, vm_watcher, vm) != 0) {
+			// Fallback: no thread available, so wait here (we hold the lock).
+			fprintf(stderr, "Failed to create watcher thread for VM %s.\n", vm->id);
+			reap_vm(vm);
+			vm_finished(dc, vm);
+			failed = 1;
+			continue;
+		}
+
+		pthread_detach(watcher);
 	}
+
+	return failed;
 }
 
 const char *vm_state_to_string(VMState state) {
