@@ -83,15 +83,15 @@ typedef struct DataCenter {
 
 	int configured;		      // Wheter the datacenter is configured or not.
 
-	// Synchronization (several threads use the Data Center at the same time).
-	// Lock order: a thread never asks for a Server lock while it holds
-	// registry_lock, except datacenter_list(), which takes them one at a time
-	// in ascending order. Nobody asks for registry_lock while holding a Server
-	// lock. Several Server locks are always taken in ascending server order.
-	pthread_mutex_t registry_lock; // Protects vm_types, reservations and num_reservations.
-	pthread_mutex_t running_lock;  // Protects running_vms.
-	pthread_cond_t idle;           // Signaled when running_vms drops to 0.
-	size_t running_vms;            // VMs whose process was launched and has not ended yet.
+	// Sincronização (várias threads usam o Data Center ao mesmo tempo).
+	// Ordem dos locks: uma thread nunca pede o lock de um servidor enquanto tem o
+	// registry_lock, exceto datacenter_list(), que os pede um de cada vez, por ordem
+	// crescente. Ninguém pede o registry_lock enquanto tem o lock de um servidor.
+	// Vários locks de servidores são sempre pedidos por ordem crescente de servidor.
+	pthread_mutex_t registry_lock; // Protege vm_types, reservas e num_reservations.
+	pthread_mutex_t running_lock;  // Protege running_vms.
+	pthread_cond_t idle;           / Sinalizado quando running_vms vai para 0.
+	size_t running_vms;            // VMs cujo processo foi iniciado e ainda não terminou.
 } DataCenter;
 
 /**

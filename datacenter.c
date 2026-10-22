@@ -77,7 +77,8 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     return 1;
   }
 
-  // Checks that touch the file system are done before taking the lock.
+// As verificações que acessam o sistema de arquivos 
+// são realizadas antes de obter o bloqueio.
   if (!file_exists(type->exec_path)) {
     fprintf(stderr, "Invalid executable path.\n");
     return 1;
@@ -88,23 +89,21 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     return 1;
   }
 
-  pthread_mutex_lock(&dc->registry_lock);
-
+  pthread_mutex_lock(&dc->registry_lock);   // pede a chave
   if(VMType_exists(dc, type->id) != NULL){
-    pthread_mutex_unlock(&dc->registry_lock);
+    pthread_mutex_unlock(&dc->registry_lock); // devolve, mais com erro
     fprintf(stderr, "VM type with id %s already exists.\n", type->id);
     return 1;
   }
 
   if(dc->num_vm_types >= MAX_VM_TYPES){
-    pthread_mutex_unlock(&dc->registry_lock);
+    pthread_mutex_unlock(&dc->registry_lock); // devolve outra saida com erro
     fprintf(stderr, "Maximum of VM types reached.\n");
     return 1;
   }
 
   dc->vm_types[dc->num_vm_types++] = *type;
-
-  pthread_mutex_unlock(&dc->registry_lock);
+  pthread_mutex_unlock(&dc->registry_lock);  // devolve saida normal
 
   return 0;
 }
@@ -115,12 +114,12 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
     return 1;
   }
 
-  // 1. Check ids, types and servers (takes the registry lock by itself).
+  // Verifica IDs, tipos e servidores (obtém o bloqueio do registro por conta própria).
   if (reservation_check_items(dc, reservation) != 0)
     return 1;
 
-  // 2. Resources: only the servers used by this reservation are locked, so
-  //    reservations on different servers do not wait for each other.
+  // Recursos: apenas os servidores usados ​​por esta reserva estão bloqueados, portanto
+  // reservas em servidores diferentes não aguardam umas pelas outras.
   reservation_lock_servers(dc, reservation);
 
   if (reservation_check_resources(dc, reservation) != 0 ||
@@ -131,8 +130,8 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
 
   reservation_unlock_servers(dc, reservation);
 
-  // 3. Register the reservation. Another thread may have taken the same id
-  //    (or filled the table) since step 1: then undo step 2.
+ // Registre a reserva. Outra thread pode ter usado o mesmo ID.
+ // (ou preencheu a tabela) desde o passo 1: então desfaça o passo 2.
   pthread_mutex_lock(&dc->registry_lock);
 
   int id_taken = 0;
@@ -204,9 +203,9 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   size_t count;
   char res_id[MAX_STRING_SIZE];
 
-  // 1. Claim the reservation (PENDING -> RUNNING) and take a copy of its VM
-  //    list. From now on no other thread can execute it, and `res` is not
-  //    used again: the table may be shifted when other reservations end.
+  // Assuma a reserva (PENDENTE -> EM EXECUÇÃO) e crie uma cópia de sua VM list
+  // A partir de agora, nenhuma outra thread pode executá-la e `res` não é
+  // utilizada novamente: a mesa poderá ser alterada quando outras reservas terminarem.
   pthread_mutex_lock(&dc->registry_lock);
 
   Reservation *res = find_pending_reservation(dc, reservation_id);
@@ -222,10 +221,9 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
 
   pthread_mutex_unlock(&dc->registry_lock);
 
-  // 2. Exercise 1: copy the input folders. This is the slow part and it runs
-  //    without any lock.
+  // Copie as pastas de entrada. Esta é a parte lenta, e ela é executada sem nenhum bloqueio.
   if (prepare_vm_workspaces(res_id, vms, count) != 0) {
-    // Put the reservation back as pending, so 'A' can be tried again.
+  // Coloque a reserva novamente como pendente, para que 'A' possa ser tentado mais uma vez.
     pthread_mutex_lock(&dc->registry_lock);
 
     for (size_t i = 0; i < dc->num_reservations; i++) {
@@ -237,8 +235,8 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
     return 1;
   }
 
-  // 3. Exercise 2: launch the VMs and return right away. Each VM is destroyed
-  //    by its own thread as soon as its process ends.
+  // Inicie as VMs e retorne imediatamente. Cada VM é destruída 
+  // por sua própria thread, assim que seu processo termina.
   return spawn_all_vms(dc, vms, count);
 }
 
@@ -257,8 +255,9 @@ int datacenter_list(DataCenter *dc) {
     return 1;
   }
 
-  // The registry stays locked during the whole listing (so reservations and
-  // VM types cannot change); each server is locked only while it is printed.
+  // O registro permanece bloqueado durante toda a listagem (de modo que as 
+  // reservas e os tipos de VM não possam ser alterados); 
+  // Cada servidor é bloqueado apenas enquanto é exibido.
   pthread_mutex_lock(&dc->registry_lock);
 
   printf("=================================== DATA CENTER STATUS ===================================\n");

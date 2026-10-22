@@ -51,7 +51,7 @@ static int uses_server(const Reservation *reservation, size_t index) {
 }
 
 void reservation_lock_servers(DataCenter *dc, const Reservation *reservation) {
-	// Ascending order, always: two threads can never wait for each other.
+	// Sempre em ordem crescente: duas threads nunca podem ficar esperando uma pela outra.
 	for (size_t i = 0; i < dc->num_servers; i++) {
 		if (uses_server(reservation, i))
 			pthread_mutex_lock(&dc->servers[i].lock);
@@ -107,8 +107,8 @@ int reservation_check_items(DataCenter *dc, Reservation *reservation) {
 
 		vms_count += item->amount;
 
-		// Attach vm_type to item for later use. VM types are never removed
-		// or changed, so the pointer stays valid after the unlock.
+		// Associa vm_type ao item para uso posterior. Os tipos de VM nunca são removidos
+        // nem alterados, portanto, o ponteiro permanece válido após o desbloqueio.
 		item->vm_type = vm_type;
 	}
 
@@ -121,9 +121,9 @@ int reservation_check_resources(DataCenter *dc, Reservation *reservation) {
 	Resources available[dc->num_servers];
 	size_t hosted_count[dc->num_servers];
 
-	/* Copy the current state of the servers used by the reservation, so we
-	   can simulate the allocation. The other servers are not locked, so they
-	   must not be touched. */
+	/* Copia o estado atual dos servidores utilizados pela reserva, para que
+	   possamos simular a alocação. Os demais servidores não estão bloqueados,
+	   portanto, não devem ser alterados. */
 	for (size_t i = 0; i < dc->num_servers; i++) {
 		if (!uses_server(reservation, i))
 			continue;
@@ -158,7 +158,7 @@ int reservation_check_resources(DataCenter *dc, Reservation *reservation) {
 }
 
 /**
- * Rolls back the changes made by a reservation operation.
+ * Reverte as alterações feitas por uma operação de reserva.
  * 
  * @param reservation Pointer to the reservation being rolled back.
  * @param initial_vms Number of VMs that existed before the operation.
@@ -169,15 +169,15 @@ static void reservation_rollback(Reservation *reservation, size_t initial_vms){
 
 		Server *server = vm->server;
 
-		// Restore resources
+		// Restaurar recursos
 		resources_add(&server->available, vm->type->required);
 
-		// Remove VM from server hosted list
+		// Remover a VM da lista de máquinas hospedadas no servidor
 		server->num_hosted_vms--;
 
 		server->hosted_vms[server->num_hosted_vms] = NULL;
 
-		// Remove VM from reservation
+		// Remover VM da reserva
 		reservation->num_vms--;
 
 		reservation->vms[reservation->num_vms] = NULL;
@@ -226,6 +226,7 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 	return 0;
 }
 
+// Abortar a reserva
 void reservation_abort(DataCenter *dc, Reservation *reservation) {
 	reservation_lock_servers(dc, reservation);
 	reservation_rollback(reservation, 0);
@@ -304,8 +305,8 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 void vm_destroy(DataCenter *dc, VM *vm) {
 	Server *server = vm->server;
 
-	// Step 1: give the resources back. Only this server's lock is needed, so
-	// VMs ending on different servers do not wait for each other.
+	// Passo 1: liberar os recursos. É necessário apenas o bloqueio deste servidor, de modo que
+	// VMs alocadas em servidores diferentes não fiquem aguardando umas pelas outras.
 	pthread_mutex_lock(&server->lock);
 
 	resources_add(&server->available, vm->type->required);
@@ -323,10 +324,10 @@ void vm_destroy(DataCenter *dc, VM *vm) {
 
 	pthread_mutex_unlock(&server->lock);
 
-	// Step 2: remove the VM from its reservation. When it was the last one,
-	// the reservation itself is removed from the Data Center. The VM is only
-	// freed here, with the registry locked, because datacenter_list() may
-	// still be reading it through the reservation.
+	// Passo 2: remover a VM de sua reserva. Quando ela for a última,
+	// a própria reserva é removida do Data Center. A VM só é
+	// liberada aqui, com o registro bloqueado, pois a função datacenter_list()
+	// pode ainda estar acessando-a por meio da reserva.
 	pthread_mutex_lock(&dc->registry_lock);
 
 	for (size_t i = 0; i < dc->num_reservations; i++) {
@@ -358,8 +359,8 @@ void vm_destroy(DataCenter *dc, VM *vm) {
 	pthread_mutex_unlock(&dc->registry_lock);
 }
 
-/*cria mais um parametro pois precisava acessar ao numerode servidores 
-par calcular a percentagem de cpu.
+/*cria mais um parametro pois precisava acessar ao numero de servidores 
+para calcular a percentagem de cpu.
 */
 void spawn_vm_child(VM *vm, size_t num_servers) {
 	
@@ -379,15 +380,15 @@ void spawn_vm_child(VM *vm, size_t num_servers) {
 	lim.rlim_max = disk_limit;
 	setrlimit(RLIMIT_FSIZE,&lim);
 
-	// cpulimit does not accept less than 1%: use 1% as the minimum.
+	// O cpulimit não aceita menos de 1%: utilize 1% como mínimo.
 	if (cpu_percentagem < 1.0)
 		cpu_percentagem = 1.0;
 
 	snprintf(cpu_str,sizeof(cpu_str),"%.2f",cpu_percentagem);
 	execlp("cpulimit","cpulimit","-q","-f","-l",cpu_str,"--",vm->type->exec_path,NULL);
 
-	// cpulimit is not installed: run the application without the CPU limit
-	// (RAM and disk limits are already set) instead of not running it at all.
+	// O cpulimit não está instalado: execute a aplicação sem o limite de CPU
+	// (os limites de RAM e de disco já estão definidos), em vez de não a executar de forma alguma.
 	if (errno == ENOENT) {
 		fprintf(stderr, "cpulimit not found: running %s without CPU limit\n", vm->id);
 		execl(vm->type->exec_path, vm->type->exec_path, (char *)NULL);
@@ -426,9 +427,9 @@ static void reap_vm(VM *vm) {
 }
 
 /**
- * Called when the process of a VM has ended: destroys the VM (returning its
- * resources) and wakes up datacenter_wait_all_vms() when it was the last one.
- * The caller must not hold any lock.
+ * Chamado quando o processo de uma VM é encerrado: destrói a VM (liberando seus
+ * recursos) e desperta a função datacenter_wait_all_vms() caso se trate da última VM.
+ * Quem realiza a chamada não deve manter nenhum bloqueio (lock).
  */
 static void vm_finished(DataCenter *dc, VM *vm) {
 	vm_destroy(dc, vm);
@@ -468,17 +469,17 @@ int spawn_all_vms(DataCenter *dc, VM **vms, size_t count) {
 
 		if (pid == -1) {
 			perror("fork erro");
-			vm_destroy(dc, vm); // This VM will never run: release its resources.
+			vm_destroy(dc, vm); // Esta VM nunca será executada: libere seus recursos.
 			failed = 1;
 			continue;
 		}
 
 		if (pid == 0) {
 			spawn_vm_child(vm, dc->num_servers);
-			_exit(1); // Only reached if spawn_vm_child fails.
+			_exit(1); // Só é alcançado se spawn_vm_child falhar.
 		}
 
-		// pid and state are read by datacenter_list() under the server lock.
+		// pid e state são lidos por datacenter_list() sob o bloqueio do servidor.
 		pthread_mutex_lock(&vm->server->lock);
 		vm->pid = pid;
 		vm->state = VM_STATE_RUNNING;
@@ -488,11 +489,11 @@ int spawn_all_vms(DataCenter *dc, VM **vms, size_t count) {
 		dc->running_vms++;
 		pthread_mutex_unlock(&dc->running_lock);
 
-		// One thread per VM, just to wait for its process and destroy it.
+		// Uma thread por VM, apenas para aguardar o seu processo e destruí-lo.
 		pthread_t watcher;
 
 		if (pthread_create(&watcher, NULL, vm_watcher, vm) != 0) {
-			// Fallback: no thread available, so wait here.
+			// Alternativa: nenhuma thread disponível, portanto, aguarde aqui.
 			fprintf(stderr, "Failed to create watcher thread for VM %s.\n", vm->id);
 			reap_vm(vm);
 			vm_finished(dc, vm);

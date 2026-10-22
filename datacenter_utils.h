@@ -25,24 +25,28 @@ VMType *VMType_exists(DataCenter *dc, const char* type_id);
  * @return 0 if the items are valid.
  * @return 1 otherwise (the error is printed).
  */
+
+/**
+* Valida ID, tipos, servidores e limites (pede o registry_lock)
+*/
 int reservation_check_items(DataCenter *dc, Reservation *reservation);
 
 /**
- * Locks the servers used by the reservation, in ascending server order.
- * Must be called after reservation_check_items() succeeded.
+ * Bloqueia os servidores utilizados pela reserva, em ordem crescente.
+ * Deve ser chamada após a execução bem-sucedida de reservation_check_items().
  */
 void reservation_lock_servers(DataCenter *dc, const Reservation *reservation);
 
 /**
- * Unlocks the servers locked by reservation_lock_servers().
+ * Desbloqueia os servidores que foram bloqueados por reservation_lock_servers().
  */
 void reservation_unlock_servers(DataCenter *dc, const Reservation *reservation);
 
 /**
- * Second half of the validation: simulates the placement of every VM using a
- * temporary copy of the available resources of the servers used. The Data
- * Center state is left unchanged. The caller must hold the locks of the servers
- * used by the reservation (reservation_lock_servers()).
+ * Segunda parte da validação: simula a alocação de cada VM utilizando uma
+ * cópia temporária dos recursos disponíveis dos servidores empregados.
+ * O estado do data center permanece inalterado. Quem realiza a chamada deve deter os
+ * bloqueios (locks) dos servidores utilizados pela reserva (reservation_lock_servers()).
  *
  * @return 0 if the reservation can be fully allocated.
  * @return 1 otherwise (the error is printed).
@@ -50,14 +54,15 @@ void reservation_unlock_servers(DataCenter *dc, const Reservation *reservation);
 int reservation_check_resources(DataCenter *dc, Reservation *reservation);
 
 /**
- * Creates all VMs requested by the reservation, assigns them to their
- * designated servers, updates the server resource availability, and stores
- * references to the created VMs in both the reservation and the corresponding
- * server hosted VM list.
+ * Cria todas as VMs solicitadas pela reserva, atribui-as aos seus
+ * servidores designados, atualiza a disponibilidade de recursos dos servidores e armazena
+ * referências às VMs criadas, tanto na reserva quanto na lista de VMs hospedadas
+ * no servidor correspondente.
  *
- * The reservation is expected to have already passed validation before this
- * function is called, and the caller must hold the locks of the servers used. If an error occurs during the commit process, the
- * function performs a rollback of the changes made by this operation.
+ * Espera-se que a reserva já tenha passado pela validação antes que esta
+ * função seja chamada, e quem a invoca deve possuir os bloqueios (locks)
+ * dos servidores utilizados. Se ocorrer um erro durante o processo de efetivação (commit),
+ * a função realiza uma reversão (rollback) das alterações feitas por esta operação.
  *
  * @param dc Data Center where the reservation will be committed.
  * @param reservation Reservation to allocate.
@@ -68,13 +73,14 @@ int reservation_check_resources(DataCenter *dc, Reservation *reservation);
 int reservation_commit(DataCenter *dc, Reservation *reservation);
 
 /**
- * Undoes a reservation_commit() that cannot be registered (for example the id
- * was taken meanwhile by another thread). Locks the servers by itself.
+ * Desfaz uma operação `reservation_commit()` que não pode ser registrada 
+ * (por exemplo, porque o ID foi obtido, nesse meio-tempo, por outra thread). 
+ * Realiza, por conta própria, o bloqueio dos servidores.
  */
 void reservation_abort(DataCenter *dc, Reservation *reservation);
 
 /**
- * Looks up a reservation by id and checks that it is pending.
+ * Busca uma reserva pelo ID e verifica se ela está pendente.
  *
  * @param dc Pointer to a Data Center.
  * @param reservation_id ID of the reservation to look up.
@@ -105,10 +111,10 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
 void spawn_vm_child(VM *vm,size_t num_servers);
 
 /**
- * Destroys a single VM: returns its resources to the hosting server, removes
- * it from the server and from its reservation, and frees it. When it was the
- * last VM of the reservation, the reservation is removed from the Data Center.
- * Takes the locks it needs by itself; the caller must not hold any.
+ * Destrói uma única VM: devolve seus recursos ao servidor hospedeiro, remove-a
+ * do servidor e de sua reserva, e a libera. Caso seja a última VM da reserva,
+ * a reserva é removida do Data Center.
+ * Adquire por conta própria os bloqueios de que necessita; quem a invoca não deve manter nenhum bloqueio.
  *
  * @param dc Pointer to the Data Center the VM belongs to.
  * @param vm Pointer to the VM being destroyed (invalid after the call).
@@ -116,10 +122,10 @@ void spawn_vm_child(VM *vm,size_t num_servers);
 void vm_destroy(DataCenter *dc, VM *vm);
 
 /**
- * Forks one child per VM, calling spawn_vm_child() in each child, and starts
- * one thread per VM that waits for its process to end and then destroys the
- * VM. Returns right after launching the processes. The caller must not hold
- * any lock.
+ * Cria um processo filho para cada VM, invocando `spawn_vm_child()` em cada um deles, e inicia
+ * uma thread por VM que aguarda o término do respectivo processo para, em seguida, destruir a
+ * VM. Retorna logo após a inicialização dos processos. Quem realiza a chamada não deve manter
+ * nenhum bloqueio (lock).
  *
  * @param dc Pointer to the Data Center.
  * @param vms VMs to launch (all of one reservation).
@@ -131,7 +137,7 @@ void vm_destroy(DataCenter *dc, VM *vm);
 int spawn_all_vms(DataCenter *dc, VM **vms, size_t count);
 
 /**
- * Converts a VM state to a human-readable string. Used by datacenter_list().
+ * Converte um estado de VM em uma string legível por humanos. Utilizado por datacenter_list().
  *
  * @param state The VMState to convert.
  *
@@ -140,7 +146,7 @@ int spawn_all_vms(DataCenter *dc, VM **vms, size_t count);
 const char *vm_state_to_string(VMState state);
 
 /**
- * Converts a reservation state to a human-readable string. Used by
+* Converte um estado de reserva em uma string legível por humanos. Utilizado por
  * datacenter_list().
  *
  * @param state The ReservationState to convert.

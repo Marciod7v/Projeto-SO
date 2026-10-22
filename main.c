@@ -204,7 +204,7 @@ int main(int argc, char **argv){
 		datacenter_destroy(&dc);
 		return 1;
 	}
-	//inicialização dos argumentos esatdpo partilhado
+	//inicialização dos argumentos esatdo partilhado
 	Argspassados mochila = {
 		.index = 0,
 		.conf_files = &conf_files,
@@ -226,7 +226,7 @@ int main(int argc, char **argv){
 	}
 
 	size_t created = 0;
-	//aqi se realiza o trabalho dinamico cada thread realiza seu trabalho 
+	//aqui se realiza o trabalho dinamico cada thread realiza seu trabalho 
 	for(size_t t = 0; t < num_threads; t++){
       if(pthread_create(&threads[t], NULL, ordemdetrabalho,&mochila) != 0){
 		fprintf(stderr,"Failed to create thread %zu\n",t);
