@@ -121,7 +121,7 @@ static void process_commands(DataCenter *dc, int fd){
 int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
-    // aumentamos o numero de argumentos que entram de 6 passa a ser 7 
+    // aumentamos o numero de argumentos que entram de 6 passa a ser 7 caso faltar emite erro
 	if (argc != 7) {
     fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir> <max_threads>\n", argv[0]);
     return 1;
@@ -142,6 +142,7 @@ int main(int argc, char **argv){
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
 	}
+	//caso seja 0 o valor de threads emite mensagme de erro
     if (max_threads == 0){
 		fprintf(stderr, "Invalid max threads: %zu\n", max_threads);
 		return 1;
