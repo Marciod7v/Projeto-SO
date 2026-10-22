@@ -41,6 +41,9 @@ typedef struct Server {
 
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
+
+	pthread_mutex_t lock; // Protects available, hosted_vms and num_hosted_vms,
+	                      // and the pid/state of the VMs hosted here.
 } Server;
 
 typedef enum {
@@ -80,11 +83,15 @@ typedef struct DataCenter {
 
 	int configured;		      // Wheter the datacenter is configured or not.
 
-	// Synchronization: VMs are destroyed by their own threads as soon as their
-	// process ends, so every access to servers/reservations/VMs is protected.
-	pthread_mutex_t lock;        // Protects servers, reservations and VMs.
-	pthread_cond_t idle;         // Signaled when running_vms drops to 0.
-	size_t running_vms;          // VMs whose process was launched and has not ended yet.
+	// Synchronization (several threads use the Data Center at the same time).
+	// Lock order: a thread never asks for a Server lock while it holds
+	// registry_lock, except datacenter_list(), which takes them one at a time
+	// in ascending order. Nobody asks for registry_lock while holding a Server
+	// lock. Several Server locks are always taken in ascending server order.
+	pthread_mutex_t registry_lock; // Protects vm_types, reservations and num_reservations.
+	pthread_mutex_t running_lock;  // Protects running_vms.
+	pthread_cond_t idle;           // Signaled when running_vms drops to 0.
+	size_t running_vms;            // VMs whose process was launched and has not ended yet.
 } DataCenter;
 
 /**
