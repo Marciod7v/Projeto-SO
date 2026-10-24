@@ -1,0 +1,6 @@
+VM successfully defined!
+Reservation made successfully!
+VM successfully defined!
+Reservation made successfully!
+VM successfully defined!
+Reservation made successfully!

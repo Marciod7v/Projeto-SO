@@ -1,0 +1,6 @@
+VM successfully defined!
+Reservation made successfully!
+Finished reservation execution!
+State: RUNNING
+Hosted VMs (0):
+[ RESERVATIONS ] (0 total)

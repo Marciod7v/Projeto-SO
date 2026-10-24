@@ -1,0 +1,2 @@
+D VM_IGNORED public-tests/fixtures/input public-tests/worker.sh 1 1 1
+R RES_IGNORED VM_IGNORED 1 1
