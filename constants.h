@@ -14,4 +14,4 @@
 
 // Root directory under which every VM workspace is created: 
 // CLOUDIST_TMP_DIR/<reservation_id>/<vm_id>
-#define CLOUDIST_TMP_DIR "/tmp/CloudIST"
+#define CLOUDIST_TMP_DIR "/tmp/CloudIST-119183"

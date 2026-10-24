@@ -78,7 +78,7 @@ static void process_commands(DataCenter *dc, int fd){
 					continue;
 				}
 
-				printf("Reservation execution started!\n");
+				printf("Finished reservation execution!\n");
 
 				break;
 
@@ -249,21 +249,6 @@ int main(int argc, char **argv){
 
 	free(threads);
 	pthread_mutex_destroy(&mochila.caneta);
-	/*// Process every .conf file, in alphabetical order (guaranteed by
-	// list_conf_files), sequentially.
-	for (size_t i = 0; i < conf_files.count; i++) {
-		
-		int fd = open(conf_files.paths[i], O_RDONLY);
-
-		if (fd < 0) {
-			fprintf(stderr, "Failed to open file: %s\n", conf_files.paths[i]);
-			continue;
-		}
-
-		process_commands(&dc, fd);
-
-		close(fd);
-	}*/
 
 	// VMs run in the background: wait for all of them to end before cleaning up.
 	datacenter_wait_all_vms(&dc);

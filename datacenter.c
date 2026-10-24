@@ -86,11 +86,12 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     return 1;
   }
   char tmp[MAX_PATH_SIZE];
-  if(absolute_path(dc->vm_types->exec_path,tmp,sizeof(tmp)) != 0){
-    fprintf(stderr,"Invalid Executable");
+  if(absolute_path(type->exec_path,tmp,sizeof(tmp)) != 0){
+    fprintf(stderr,"Invalid Executable\n");
     return 1;
   }
-  snprintf(dc->vm_types->exec_path,sizeof(tmp),"%s",tmp);
+  snprintf(type->exec_path,sizeof(type->exec_path),"%s",tmp);
+
   if (!path_exists(type->input_folder)) {
     fprintf(stderr, "Invalid input folder.\n");
     return 1;
