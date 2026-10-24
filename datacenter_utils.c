@@ -365,7 +365,7 @@ para calcular a percentagem de cpu.
 void spawn_vm_child(VM *vm, size_t num_servers) {
 	
 	// TODO: Limit RAM, DISK and use exec with cpulimit.
-    double cpu_percentagem = vm->type->required.cpu/(vm->server->total.cpu*(double)num_servers)*100;
+    double cpu_percentagem = 100*(vm->type->required.cpu*(double)vm->dc->local_cores)/(vm->server->total.cpu*(double)num_servers);
 	char cpu_str[32];
 
 
@@ -385,6 +385,11 @@ void spawn_vm_child(VM *vm, size_t num_servers) {
 		cpu_percentagem = 1.0;
 
 	snprintf(cpu_str,sizeof(cpu_str),"%.2f",cpu_percentagem);
+	//muda a pasta onde o processo está
+	if(chdir(vm->dirtowork) != 0){
+		perror("chdir");
+		_exit(1);
+	}
 	execlp("cpulimit","cpulimit","-q","-f","-l",cpu_str,"--",vm->type->exec_path,NULL);
 
 	// O cpulimit não está instalado: execute a aplicação sem o limite de CPU

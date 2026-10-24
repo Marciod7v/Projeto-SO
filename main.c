@@ -154,8 +154,8 @@ int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
     // aumentamos o numero de argumentos que entram de 6 passa a ser 7 caso faltar emite erro
-	if (argc != 7) {
-    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir> <max_threads>\n", argv[0]);
+	if (argc != 8) {
+    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <local_cores> <input_dir> <max_threads>\n", argv[0]);
     return 1;
   }
 
@@ -164,13 +164,15 @@ int main(int argc, char **argv){
 	size_t disk;
 	//aqui metemos quantos threads vão ser lidos
 	size_t max_threads;
+	size_t local_cores;
 	double cpu;
 
 	if (parse_size_t_arg(argv[1], &servers) != 0 ||
 			parse_size_t_arg(argv[2], &ram) != 0 ||
 			parse_size_t_arg(argv[3], &disk) != 0 ||
 			parse_double_arg(argv[4], &cpu) != 0 ||
-		    parse_size_t_arg(argv[6], &max_threads) != 0) {
+			parse_size_t_arg(argv[5], &local_cores) != 0 ||
+		    parse_size_t_arg(argv[7], &max_threads) != 0) {
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
 	}
@@ -179,7 +181,13 @@ int main(int argc, char **argv){
 		fprintf(stderr, "Invalid max threads: %zu\n", max_threads);
 		return 1;
 	}
-	const char *input_dir = argv[5];
+	if(local_cores == 0){
+		fprintf(stderr,"Invalid local cores: %zu\n", local_cores);
+		return 1;
+	}
+	dc.local_cores = local_cores;
+
+	const char *input_dir = argv[6];
 
 	if (!path_exists(input_dir)) {
 		fprintf(stderr, "Invalid input directory: %s\n", input_dir);

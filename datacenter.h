@@ -32,6 +32,7 @@ typedef struct VM {
   DataCenter *dc; // Data Center the VM belongs to (used by the thread that waits for the VM).
   pid_t pid;      // PID of executable file.
   VMState state;  // State of the VM.
+  char dirtowork[MAX_PATH_SIZE];
 } VM;
 
 typedef struct Server {
@@ -74,7 +75,7 @@ typedef struct Reservation {
 typedef struct DataCenter {
 	Server *servers;			     // List of Servers.
 	size_t num_servers;              // Number of Servers.
-
+    size_t local_cores;
 	VMType vm_types[MAX_VM_TYPES];
     size_t num_vm_types;
 

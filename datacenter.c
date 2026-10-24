@@ -10,7 +10,9 @@
 void datacenter_init(DataCenter *dc) {
   dc->servers = NULL;
   dc->num_servers = 0;
-
+  //local cores init 
+  dc->local_cores = 0;
+  
   dc->num_vm_types = 0;
 
   dc->num_reservations = 0;
@@ -83,7 +85,12 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
     fprintf(stderr, "Invalid executable path.\n");
     return 1;
   }
-
+  char tmp[MAX_PATH_SIZE];
+  if(absolute_path(dc->vm_types->exec_path,tmp,sizeof(tmp)) != 0){
+    fprintf(stderr,"Invalid Executable");
+    return 1;
+  }
+  snprintf(dc->vm_types->exec_path,sizeof(tmp),"%s",tmp);
   if (!path_exists(type->input_folder)) {
     fprintf(stderr, "Invalid input folder.\n");
     return 1;
@@ -178,7 +185,8 @@ static int prepare_vm_workspaces(const char *res_id, VM **vms, size_t count) {
 
     char vm_dir[MAX_PATH_SIZE];
     int len = snprintf(vm_dir, sizeof(vm_dir), "%s/%s/%s", CLOUDIST_TMP_DIR, res_id, vm->id);
-
+    //copiar o diretorio de cada vm e guardar
+    snprintf(vm->dirtowork,sizeof(vm->dirtowork),"%s",vm_dir);
     if (len < 0 || (size_t)len >= sizeof(vm_dir)) {
       fprintf(stderr, "VM workspace path is too long for VM \"%s\".\n", vm->id);
       return 1;
